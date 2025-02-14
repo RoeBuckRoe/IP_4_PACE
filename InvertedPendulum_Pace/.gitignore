@@ -1,0 +1,9 @@
+Build/
+depends.x86-linux
+dependsRaw.x86-linux
+gdb.log
+
+depends.armv8-linux
+dependsRaw.armv8-linux
+Startup/*.bin
+Startup/*.csv
