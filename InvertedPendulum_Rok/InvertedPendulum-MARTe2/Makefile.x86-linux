@@ -1,3 +1,0 @@
-export TARGET=x86-linux
-
-include Makefile.inc

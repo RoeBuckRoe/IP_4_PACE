@@ -1,18 +1,18 @@
-#ifndef SOURCE_COMPONENTS_GAMS_IPStatusGAM_IPStatusGAM_H_
-#define SOURCE_COMPONENTS_GAMS_IPStatusGAM_IPStatusGAM_H_
+#ifndef SOURCE_COMPONENTS_GAMS_RESETGAM_RESETGAM_H_
+#define SOURCE_COMPONENTS_GAMS_RESETGAM_RESETGAM_H_
 
 #include "GAM.h"
-#include "StatefulI.h"
 
 namespace InvertedPendulum {
 
-class IPStatusGAM : public MARTe::GAM, public MARTe::StatefulI {
+//TODO documentation
+class ResetGAM : public MARTe::GAM, public MARTe::StatefulI {
 public:
     CLASS_REGISTER_DECLARATION()
 
-    IPStatusGAM();
+    ResetGAM();
 
-    virtual ~IPStatusGAM();
+    virtual ~ResetGAM();
 
     virtual bool Setup();
 
@@ -22,10 +22,11 @@ public:
                                   const MARTe::char8* const nextStateName);
 
 private:
-    MARTe::uint32* inputEncoderPosition;
+    MARTe::uint8* outputCommand;
     MARTe::uint8* outputSwitchState;
+    bool resetDone;
 };
 
 } // namespace InvertedPendulum
 
-#endif // SOURCE_COMPONENTS_GAMS_IPStatusGAM_IPStatusGAM_H_
+#endif // SOURCE_COMPONENTS_GAMS_RESETGAM_RESETGAM_H_

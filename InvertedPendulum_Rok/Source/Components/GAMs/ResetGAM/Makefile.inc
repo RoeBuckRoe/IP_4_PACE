@@ -1,4 +1,4 @@
-OBJSX=StartupGAM.x
+OBJSX=ResetGAM.x
 
 PACKAGE=Components/GAMs
 
@@ -23,10 +23,11 @@ INCLUDES += -I$(MARTe2_DIR)/Source/Core/Scheduler/L4Messages
 INCLUDES += -I$(MARTe2_DIR)/Source/Core/Scheduler/L5GAMs
 INCLUDES += -I$(MARTe2_DIR)/Source/Core/FileSystem/L1Portability
 INCLUDES += -I$(MARTe2_DIR)/Source/Core/FileSystem/L3Streams
+INCLUDES += -I$(ROOT_DIR)/Source/Components/DataSources/MotorSTM32
 
 all: $(OBJS) $(SUBPROJ) \
-	$(BUILD_DIR)/StartupGAM$(LIBEXT)\
-    $(BUILD_DIR)/StartupGAM$(DLLEXT)\
+	$(BUILD_DIR)/ResetGAM$(LIBEXT)\
+    $(BUILD_DIR)/ResetGAM$(DLLEXT)\
     
 
 include depends.$(TARGET)
