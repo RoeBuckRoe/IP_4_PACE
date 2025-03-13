@@ -3,7 +3,8 @@ OBJSX =
 SPB = StartupGAM.x \
       HomingGAM.x \
       ResetGAM.x \
-      BalanceGAM.x
+      BalanceGAM.x \
+      BalanceLQRGAM.x
 
 ROOT_DIR=../../..
 PACKAGE=Components
