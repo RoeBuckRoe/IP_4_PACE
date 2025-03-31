@@ -49,11 +49,11 @@ MARTe::int32 normalizeEncoderPos(MARTe::uint32 position,
 
 /**
  * @return True if `x` and `y` have opposite signs. Else false.
- */
+
 bool oppositeSigns(MARTe::int32 x, MARTe::int32 y)
 {
     return ((x ^ y) >> 31) != 0;
-}
+} */
 
 /**
  * @param position Pendulum position in encoder steps.
@@ -343,17 +343,12 @@ bool BalanceLQRGAM::Execute() {
     *outputCommandParam = 0u;
     *outputRtAcc = 0.0f;
     *outputRtPeriod = rtPeriod;
-    *outputSwitchState = 0u;
+    *outputSwitchState = 5u;
 
     if (exit) {
         return true;
     }
-
-    if (!balanceEnabled) {
-        SwingUp();
-    }
-    // Else if not used here FOR A REASON!!! (SwingUp function changes its value.)
-    if (balanceEnabled) {
+    else {
         Balance(rtPeriod);
     }
 
@@ -364,68 +359,11 @@ bool BalanceLQRGAM::PrepareNextState(const MARTe::char8* const currentStateName,
                                   const MARTe::char8* const nextStateName) {
     firstMove = true;
     positiveDirection = true;
-    balanceEnabled = false;
     exit = false;
-    swingUpKick = 130;
     return true;
 }
 
-void BalanceLQRGAM::SwingUp() {
-    MARTe::int32 normPosition = normalizeEncoderPos(*inputEncoderPosition,
-            *inputEncoderPositionBottom);
-    MARTe::int32 normPrevPosition = normalizeEncoderPos(*inputPrevEncoderPosition,
-            *inputEncoderPositionBottom);
-
-    if (firstMove) {
-        // Do not move the motor if it is already moving.
-        if (*inputMotorState != MotorState::Inactive) {
-            return;
-        }
-        // Always give a kick to the motor at the start, to get the pendulum moving.
-        firstMove = false;
-        *outputCommand = MotorCommands::GoTo;
-        *outputCommandParam = *inputMotorPosition - 250;
-    }
-    else {
-        // If we are close to the highest position (within 15 steps, enable balancing state.)
-        if (std::abs(normPosition) > encoderStepsInHalfCircle - 15) {
-            balanceEnabled = true;
-            return;
-        }
-
-        // When we are close to the top position, reduce the kick strength.
-        if (std::abs(normPosition) > encoderStepsInHalfCircle - 220) {
-            swingUpKick = 70;
-        }
-
-        // If the pendulum crossed the bottom position, add a kick.
-        if (oppositeSigns(normPrevPosition, normPosition)) {
-            // Make sure motor does not go too far from the center position.
-            if (std::abs(*inputMotorPosition) < motorStepsInThirdOfCircle) {
-                // Only move the motor when it's not moving.
-                if (*inputMotorState == MotorState::Inactive) {
-                    *outputCommand = MotorCommands::GoTo;
-                    if (positiveDirection) {
-                        *outputCommandParam = *inputMotorPosition + swingUpKick;
-                    }
-                    else {
-                        *outputCommandParam = *inputMotorPosition - swingUpKick;
-                    }
-                }
-            }
-            positiveDirection = !positiveDirection;
-        }
-    }
-}
-
 void BalanceLQRGAM::Balance(MARTe::float32 rtPeriod) {
-    // Make sure motor does not go too far from the center position.
-    if (std::abs(*inputMotorPosition) > motorStepsInThirdOfCircle) {
-        *outputSwitchState = 5u;
-        exit = true;
-        std::cout << "motor out of position " << std::endl;
-        return;
-    }
 
     MARTe::int32 normPosition = normalizeEncoderPos(*inputEncoderPosition,
             *inputEncoderPositionBottom);
@@ -442,10 +380,17 @@ void BalanceLQRGAM::Balance(MARTe::float32 rtPeriod) {
     MARTe::float32 encoderSpeedRad = encoderStepsToRadians(encoderSpeed);
 
     // If encoder is too far way from the highest position stop balancing.
+    if (std::abs(*inputMotorPosition) > motorStepsInThirdOfCircle) {
+        *outputSwitchState = 3u;
+        exit = true;
+        std::cout << "motor position drifted too far " << std::endl;
+        return;
+    }
+    // Make sure motor does not go too far from the center position.
     if (std::abs(encoderPositionRad) > 0.15f) {
         *outputSwitchState = 3u;
         exit = true;
-        std::cout << "encoder unbalanced " << std::endl;
+        std::cout << "encoder out of position " << std::endl;
         return;
     }
 
