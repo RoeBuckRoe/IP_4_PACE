@@ -135,9 +135,11 @@ LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/superuser/MARTe_ws/InvertedPendulum-MARTe
 LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/superuser/MARTe_ws/InvertedPendulum-MARTe2/Build/x86-linux/Components/GAMs/StartupGAM/
 LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/superuser/MARTe_ws/InvertedPendulum-MARTe2/Build/x86-linux/Components/GAMs/SwingUpGAM/
 LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/superuser/MARTe_ws/InvertedPendulum-MARTe2/Build/x86-linux/Components/DataSources/MotorSTM32/
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/superuser/MARTe_ws/InvertedPendulum-MARTe2/Build/x86-linux/Components/DataSources/NeoFileReader/
+
 LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/superuser/MARTe_ws/InvertedPendulum-MARTe2/Build/x86-linux/Components/GAMs/BalanceGAM/
 LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/superuser/MARTe_ws/InvertedPendulum-MARTe2/Build/x86-linux/Components/GAMs/ResetGAM/
-LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/superuser/MARTe_ws/InvertedPendulum-MARTe2/Source/Components/GAMs/BalanceLQRGAM/
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/superuser/MARTe_ws/InvertedPendulum-MARTe2/Build/x86-linux/Components/GAMs/BalanceLQRGAM/
 
 
 LD_LIBRARY_PATH=$LD_LIBRARY_PATH:../Build/$TARGET/Components/DataSources/EduKitSerial

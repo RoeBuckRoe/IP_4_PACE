@@ -1,6 +1,7 @@
 OBJSX= 
 
-SPB = MotorSTM32.x
+SPB = MotorSTM32.x \
+      NeoFileReader.x  
 
 ROOT_DIR=../../..
 PACKAGE=Components
