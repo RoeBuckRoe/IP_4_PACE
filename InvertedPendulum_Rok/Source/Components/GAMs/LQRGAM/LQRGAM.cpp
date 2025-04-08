@@ -1,10 +1,13 @@
-#include "BalanceGAM.h"
+#include "LQRGAM.h"
 #include "MotorSTM32Constants.h"
+
+#include "stdio.h"
 
 #include "AdvancedErrorManagement.h"
 
 #include <algorithm>
-
+//TODO remove debugging
+#include <iostream>
 namespace InvertedPendulum {
 
 namespace {
@@ -114,7 +117,7 @@ MARTe::float32 calculateSpeed(MARTe::int32 position,
 
 } // namespace
 
-BalanceGAM::BalanceGAM() : GAM(),
+LQRGAM::LQRGAM() : GAM(),
                            inputMotorState(NULL_PTR(MARTe::uint8*)),
                            inputEncoderPosition(NULL_PTR(MARTe::uint32*)),
                            inputMotorPosition(NULL_PTR(MARTe::int32*)),
@@ -123,64 +126,220 @@ BalanceGAM::BalanceGAM() : GAM(),
                            inputPrevMotorPosition(NULL_PTR(MARTe::int32*)),
                            inputPrevAbsoluteTime(NULL_PTR(MARTe::uint64*)),
                            inputEncoderPositionBottom(NULL_PTR(MARTe::uint32*)),
+                           inputEnableBalance(NULL_PTR(MARTe::uint8*)),
                            outputCommand(NULL_PTR(MARTe::uint8*)),
                            outputCommandParam(NULL_PTR(MARTe::int32*)),
                            outputRtAcc(NULL_PTR(MARTe::float32*)),
                            outputRtPeriod(NULL_PTR(MARTe::float32*)),
                            outputSwitchState(NULL_PTR(MARTe::uint8*)),
-                           k1(0.0f),
+                           inputVectorPointer(NULL_PTR(MARTe::float64 **)),
+                           outputVectorPointer(NULL_PTR(MARTe::float64 **)),
+                           gainMatrixPointer(NULL_PTR(MARTe::float64 **))
+                           ControlInputPointer(NULL_PTR(MARTe::float64 **)),
+                           StateVectorPointer(NULL_PTR(MARTe::float64 **)),
+                           gainMatrixOfColumns(0u),
+                           gainMatrixOfRows(0u),
+                           ControlInputOfColumns(0u),
+                           ControlInputOfRows(0u),
+                           StateVectorOfColumns(0u),
+                           StateVectorOfRows(0u),
+                           /*k1(0.0f),
                            k2(0.0f),
                            k3(0.0f),
-                           k4(0.0f),
+                           k4(0.0f),*/
                            firstMove(true),
                            positiveDirection(true),
-                           balanceEnabled(false),
+                           balanceEnabled(true),
                            exit(false),
                            swingUpKick(0) {
 }
 
-BalanceGAM::~BalanceGAM() {
+LQRGAM::~LQRGAM() {
+    if (gainMatrixPointer != NULL_PTR(float64 **)) {
+        for (uint32 row = 0u; row < gainMatrixOfRows; row++) {
+            if (gainMatrixPointer[row] != NULL_PTR(float64 *)) {
+                delete gainMatrixPointer[row];
+                gainMatrixPointer[row] = NULL_PTR(float64 *);
+            }
+        }
+        delete[] gainMatrixPointer;
+        gainMatrixPointer = NULL_PTR(float64 **);
+    }
+    if (ControlInputPointer != NULL_PTR(float64 **)) {
+        for (uint32 row = 0u; row < ControlInputOfRows; row++) {
+            if (ControlInputPointer[row] != NULL_PTR(float64 *)) {
+                delete ControlInputPointer[row];
+                ControlInputPointer[row] = NULL_PTR(float64 *);
+            }
+        }
+        delete[] ControlInputPointer;
+        ControlInputPointer = NULL_PTR(float64 **);
+    }
+    if (StateVectorPointer != NULL_PTR(float64 **)) {
+        for (uint32 row = 0u; row < StateVectorOfRows; row++) {
+            if (StateVectorPointer[row] != NULL_PTR(float64 *)) {
+                delete StateVectorPointer[row];
+                StateVectorPointer[row] = NULL_PTR(float64 *);
+            }
+        }
+        delete[] StateVectorPointer;
+        StateVectorPointer = NULL_PTR(float64 **);
+    }
 }
 
-bool BalanceGAM::Initialise(MARTe::StructuredDataI& data) {
+bool LQRGAM::Initialise(MARTe::StructuredDataI& data) {
     bool ok = GAM::Initialise(data);
 
-    if (ok) {
+/*    if (ok) {
         ok = data.Read("K1", k1);
         if (!ok) {
-            REPORT_ERROR(MARTe::ErrorManagement::ParametersError, "No k1 has been "
-                    "specified.");
+            REPORT_ERROR(MARTe::ErrorManagement::ParametersError, "No k1 has been specified.");
         }
     }
     if (ok) {
         ok = data.Read("K2", k2);
         if (!ok) {
-            REPORT_ERROR(MARTe::ErrorManagement::ParametersError, "No k2 has been "
-                    "specified.");
+            REPORT_ERROR(MARTe::ErrorManagement::ParametersError, "No k2 has been specified.");
         }
     }
     if (ok) {
         ok = data.Read("K3", k3);
         if (!ok) {
-            REPORT_ERROR(MARTe::ErrorManagement::ParametersError, "No k3 has been "
-                    "specified.");
+            REPORT_ERROR(MARTe::ErrorManagement::ParametersError, "No k3 has been specified.");
         }
     }
     if (ok) {
         ok = data.Read("K4", k4);
         if (!ok) {
-            REPORT_ERROR(MARTe::ErrorManagement::ParametersError, "No k4 has been "
-                    "specified.");
+            REPORT_ERROR(MARTe::ErrorManagement::ParametersError, "No k4 has been specified.");
         }
+    } 
+*/
+    if (ok) { //Load Weight Matrix
+        AnyType functionsMatrix;
+        functionsMatrix = data.GetType("GainMatrix");
+        ok = (functionsMatrix.GetDataPointer() != NULL);
+        if (!ok) {
+            REPORT_ERROR(ErrorManagement::InitialisationError, "Error getting type for GainMatrix");
+        }
+        if (ok) {
+            //0u are columns
+            gainMatrixOfColumns = functionsMatrix.GetNumberOfElements(0u);
+            ok = (gainMatrixOfColumns > 0u);
+            if (!ok) {
+                REPORT_ERROR(ErrorManagement::InitialisationError, "The number of input matrix columns must be positive");
+            }
+        }
+        if (ok) {
+            //1u are rows...
+            gainMatrixOfRows = functionsMatrix.GetNumberOfElements(1u);
+            ok = (gainMatrixOfRows > 0u);
+            if (!ok) {
+                REPORT_ERROR(ErrorManagement::InitialisationError,"the number of input matrix rows must be positive");
+
+            }
+        }
+        if (ok) { // allocate input matrix memory and read matrix coefficients
+            gainMatrixPointer = new float64 *[gainMatrixOfRows];
+            //lint -e{613} Possible use of null pointer--> If new fails the program crashes.
+            for (uint32 i = 0u; (i < gainMatrixOfRows) && ok; i++) {
+                gainMatrixPointer[i] = new float64[gainMatrixOfColumns];
+            }
+            if (ok) {
+                Matrix<float64> matrix(gainMatrixPointer, gainMatrixOfRows, gainMatrixOfColumns);
+                ok = (data.Read("GainMatrix", matrix));
+                if (!ok) {
+                    REPORT_ERROR(ErrorManagement::InitialisationError, "Error reading gainMatrix");
+                }
+            }
+        }  
+    }
+    if (ok) { //Control Input Vector
+        AnyType functionsMatrix;
+        functionsMatrix = data.GetType("ControlInput");
+        ok = (functionsMatrix.GetDataPointer() != NULL);
+        if (!ok) {
+            REPORT_ERROR(ErrorManagement::InitialisationError, "Error getting type for ControlInput");
+        }
+        if (ok) {
+            //0u are columns
+            ControlInputOfColumns = functionsMatrix.GetNumberOfElements(0u);
+            ok = (ControlInputOfColumns > 0u);
+            if (!ok) {
+                REPORT_ERROR(ErrorManagement::InitialisationError, "The number of input matrix columns must be positive");
+            }
+        }
+        if (ok) {
+            //1u are rows...
+            ControlInputOfRows = functionsMatrix.GetNumberOfElements(1u);
+            ok = (ControlInputOfRows == gainMatrixOfRows);
+            if (!ok) {
+                REPORT_ERROR(ErrorManagement::InitialisationError,"the number of Control Input Vector rows must be equal to Gain Matrix rows");
+
+            }
+        }
+        if (ok) { // allocate input matrix memory and read matrix coefficients
+            ControlInputPointer = new float64 *[ControlInputOfRows];
+            //lint -e{613} Possible use of null pointer--> If new fails the program crashes.
+            for (uint32 i = 0u; (i < ControlInputOfRows) && ok; i++) {
+                ControlInputPointer[i] = new float64[ControlInputOfColumns];
+            }
+            if (ok) {
+                Matrix<float64> matrix(ControlInputPointer, ControlInputOfRows, ControlInputOfColumns);
+                ok = (data.Read("ControlInput", matrix));
+                if (!ok) {
+                    REPORT_ERROR(ErrorManagement::InitialisationError, "Error reading ControlInput");
+                }
+            }
+        }  
+    }
+    if (ok) { //State Vector
+        AnyType functionsMatrix;
+        functionsMatrix = data.GetType("StateVector");
+        ok = (functionsMatrix.GetDataPointer() != NULL);
+        if (!ok) {
+            REPORT_ERROR(ErrorManagement::InitialisationError, "Error getting type for StateVector");
+        }
+        if (ok) {
+            //0u are columns
+            StateVectorOfColumns = functionsMatrix.GetNumberOfElements(0u);
+            ok = (StateVectorOfColumns == gainMatrixOfColumns);
+            if (!ok) {
+                REPORT_ERROR(ErrorManagement::InitialisationError, "The number of StateVector columns must be equal to GainMatrix columns");
+            }
+        }
+        if (ok) {
+            //1u are rows...
+            StateVectorOfRows = functionsMatrix.GetNumberOfElements(1u);
+            ok = (StateVectorOfRows > 0u);
+            if (!ok) {
+                REPORT_ERROR(ErrorManagement::InitialisationError,"the number of input matrix rows must be positive");
+
+            }
+        }
+        if (ok) { // allocate input matrix memory and read matrix coefficients
+            StateVectorPointer = new float64 *[StateVectorOfRows];
+            //lint -e{613} Possible use of null pointer--> If new fails the program crashes.
+            for (uint32 i = 0u; (i < StateVectorOfRows) && ok; i++) {
+                StateVectorPointer[i] = new float64[StateVectorOfColumns];
+            }
+            if (ok) {
+                Matrix<float64> matrix(StateVectorPointer, StateVectorOfRows, StateVectorOfColumns);
+                ok = (data.Read("StateVector", matrix));
+                if (!ok) {
+                    REPORT_ERROR(ErrorManagement::InitialisationError, "Error reading StateVector");
+                }
+            }
+        }  
     }
     return ok;
 }
 
-bool BalanceGAM::Setup() {
+bool LQRGAM::Setup() {
     // Validate input signals
-    bool ok = GetNumberOfInputSignals() == 8;
+    bool ok = GetNumberOfInputSignals() == 9;
     if (!ok) {
-        REPORT_ERROR(MARTe::ErrorManagement::ParametersError, "Number of input signals must be 8.");
+        REPORT_ERROR(MARTe::ErrorManagement::ParametersError, "Number of input signals must be 9.");
     }
     if (ok) {
         ok = GetSignalType(MARTe::InputSignals, 0u) == MARTe::UnsignedInteger8Bit;
@@ -262,6 +421,16 @@ bool BalanceGAM::Setup() {
                     "uint32");
         }
     }
+    if (ok) {
+        ok = GetSignalType(MARTe::InputSignals, 8u) == MARTe::UnsignedInteger8Bit;
+        if (ok) {
+            inputEnableBalance = static_cast<MARTe::uint8*>(GetInputSignalMemory(8u));
+        }
+        else {
+            REPORT_ERROR(MARTe::ErrorManagement::InitialisationError, "Ninth input signal shall be of type "
+                    "uint8");
+        }
+    }
     // Validate output signals
     if (ok) {
         bool ok = GetNumberOfOutputSignals() == 5;
@@ -319,10 +488,15 @@ bool BalanceGAM::Setup() {
                     "uint8");
         }
     }
+    if (ok){
+        InputVector = Matrix<float64>(ControlInputPointer, ControlInputOfRows, ControlInputOfColumns);
+        StateVector = Matrix<float64>(StateVectorPointer, StateVectorOfRows, StateVectorOfColumns);
+        GainMatrix = Matrix<float64>(gainMatrixPointer, gainMatrixOfRows, gainMatrixOfColumns);
+    }
     return ok;
 }
 
-bool BalanceGAM::Execute() {
+bool LQRGAM::Execute() {
     const MARTe::float32 microsecondsToSeconds = 1e-6f;
     MARTe::float32 rtPeriod = (*inputAbsoluteTime - *inputPrevAbsoluteTime) *
             microsecondsToSeconds;
@@ -336,92 +510,18 @@ bool BalanceGAM::Execute() {
     if (exit) {
         return true;
     }
-
-    if (!balanceEnabled) {
-        SwingUp();
-    }
-    // Else if not used here FOR A GOOD REASON!!! (SwingUp function changes its value.)
-    if (balanceEnabled) {
-        Balance(rtPeriod);
-    }
-
-    return true;
-}
-
-bool BalanceGAM::PrepareNextState(const MARTe::char8* const currentStateName,
-                                  const MARTe::char8* const nextStateName) {
-    firstMove = true;
-    positiveDirection = true;
-    balanceEnabled = false;
-    exit = false;
-    swingUpKick = 300;
-    return true;
-}
-
-void BalanceGAM::SwingUp() {
-    MARTe::int32 normPosition = normalizeEncoderPos(*inputEncoderPosition,
-            *inputEncoderPositionBottom);
-    MARTe::int32 normPrevPosition = normalizeEncoderPos(*inputPrevEncoderPosition,
-            *inputEncoderPositionBottom);
-
-    if (firstMove) {
-        // Do not move the motor if it is already moving.
-        if (*inputMotorState != MotorState::Inactive) {
-            return;
-        }
-        // Always give a kick to the motor at the start, to get the pendulum moving.
-        firstMove = false;
-        *outputCommand = MotorCommands::GoTo;
-        *outputCommandParam = *inputMotorPosition - 250;
-    }
-    else {
-        // If we are close to the highest position (within 15 steps, enable balancing state.)
-        if (std::abs(normPosition) > encoderStepsInHalfCircle - 15) {
-            balanceEnabled = true;
-            return;
-        }
-
-       /* // When we are close to the top position, reduce the kick strength.
-        if (std::abs(normPosition) > encoderStepsInHalfCircle - 220) {
-            swingUpKick = 75;
-        }
-        */
-
-        // If the pendulum crossed the bottom position, add a kick.
-        if (oppositeSigns(normPrevPosition, normPosition)) {
-            // Make sure motor does not go too far from the center position.
-            if (std::abs(*inputMotorPosition) < motorStepsInThirdOfCircle) {
-                // Only move the motor when it's not moving.
-                if (*inputMotorState == MotorState::Inactive) {
-                    *outputCommand = MotorCommands::GoTo;
-                    if (positiveDirection) {
-                        *outputCommandParam = *inputMotorPosition + swingUpKick;
-                    }
-                    else {
-                        *outputCommandParam = *inputMotorPosition - swingUpKick;
-                    }
-                }
-            }
-            positiveDirection = !positiveDirection;
-        }
-    }
-}
-
-void BalanceGAM::Balance(MARTe::float32 rtPeriod) {
     // Make sure motor does not go too far from the center position.
-    if (std::abs(*inputMotorPosition) > motorStepsInThirdOfCircle) {
+    if (std::abs(*inputMotorPosition) < motorStepsInThirdOfCircle) {
         *outputSwitchState = 3u;
         exit = true;
+        std::cout << "motor out of position " << std::endl;
         return;
     }
 
-    MARTe::int32 normPosition = normalizeEncoderPos(*inputEncoderPosition,
-            *inputEncoderPositionBottom);
-    MARTe::int32 normPrevPosition = normalizeEncoderPos(*inputPrevEncoderPosition,
-            *inputEncoderPositionBottom);
+    MARTe::int32 normPosition = normalizeEncoderPos(*inputEncoderPosition, *inputEncoderPositionBottom);
+    MARTe::int32 normPrevPosition = normalizeEncoderPos(*inputPrevEncoderPosition, *inputEncoderPositionBottom);
 
-    MARTe::float32 motorSpeed = calculateSpeed(*inputMotorPosition, *inputPrevMotorPosition,
-            rtPeriod);
+    MARTe::float32 motorSpeed = calculateSpeed(*inputMotorPosition, *inputPrevMotorPosition, rtPeriod);
     MARTe::float32 encoderSpeed = calculateSpeed(normPosition, normPrevPosition, rtPeriod);
 
     MARTe::float32 motorPositionRad = motorStepsToRadians(*inputMotorPosition);
@@ -430,21 +530,37 @@ void BalanceGAM::Balance(MARTe::float32 rtPeriod) {
     MARTe::float32 encoderSpeedRad = encoderStepsToRadians(encoderSpeed);
 
     // If encoder is too far way from the highest position stop balancing.
-    if (std::abs(encoderPositionRad) > 0.15f) {
+    if (std::abs(encoderPositionRad) < 0.15f) {
         *outputSwitchState = 3u;
         exit = true;
+        std::cout << "encoder unbalanced " << std::endl;
         return;
     }
 
-    MARTe::float32 acceleration = k1 * motorPositionRad +
+    StateVector(0u,0u) = encoderPositionRad; 
+    StateVector(1u,0u) = motorPositionRad;
+    StateVector(2u,0u) = encoderSpeedRad;
+    StateVector(3u,0u) = motorSpeedRad;
+
+    ok = InputVector.Product(GainMatrix, StateVector);
+    
+    /*MARTe::float32 acceleration = k1 * motorPositionRad +
             k2 * encoderPositionRad +
             k3 * motorSpeedRad +
             k4 * encoderSpeedRad;
+    */
+
+    std::cout << "motorPositionRad " << motorPositionRad << std::endl;
+    std::cout << "encoderPositionRad " << encoderPositionRad << std::endl;
+    std::cout << "motorSpeedRad " << motorSpeedRad << std::endl;
+    std::cout << "encoderSpeedRad " << encoderSpeedRad << std::endl;
+    std::cout << "RT acc " << radiansToMotorSteps(InputVector(0u,0u)) << std::endl;
 
     *outputRtAcc = radiansToMotorSteps(acceleration);
     *outputCommand = MotorCommands::RT_MoveMotor;
+    return true;
 }
 
-CLASS_REGISTER(BalanceGAM, "1.0");
+CLASS_REGISTER(LQRGAM, "1.0");
 
 } // namespace InvertedPendulum
