@@ -2,7 +2,7 @@
 
 ## Instalation and Setup
 
-If you want to install MARTe2 on your own machine create a MARTe workspace folder and clone the following repository into a directory called MARTe2-dev:
+If you want to install MARTe2 on your own machine create a MARTe workspace folder and clone the following repository into the directory:
 
 ```
 https://github.com/aneto0/MARTe2
@@ -17,7 +17,7 @@ $ export MARTe2_DIR=$(pwd)
 $ LD_LIBRARY_PATH=MARTe2_DIR/Build/x86-linux/Core
 ```
 
-Then, clone this standard library of components and install them using the instructions at the bottom of the README:
+Then, clone the standard library of components and install them using the instructions a below into the MARTe workspace folder:
 
 https://github.com/aneto0/MARTe2-components 
 
@@ -30,9 +30,7 @@ $ make -f Makefile.x86-linux
 $ export MARTe2_Components_DIR=$(pwd)
 ```
 
-Before running the MARTe application be sure to export the relevant paths:
-
-
+> Before running the MARTe application be sure to export the relevant paths.
 
 Once the environment is setup. The next step is to Install the Inverted Pendulum programs. 
 
