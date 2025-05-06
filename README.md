@@ -58,4 +58,6 @@ Set the correct device file (Port configuration of the MotorSTM32 data source in
 
 Navigate to Startup/ directory within the project and execute the following command:
 
+```
 sudo -E ./Main.sh -l RealTimeLoader -f ../Configurations/Pendulum.cfg -m StateMachine::START
+```
