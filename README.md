@@ -1,12 +1,63 @@
 # IP_4_PACE
 
-InvertedPendulum_PACE/Configurations/PACE_IP_App.cfg is application beign developed to run Sam's control model. Stuck at the State 2 implementation, having trouble with the file reader and STM code (C code) intergration. The rest of the configuration files are either legacy files from Jawad's repo or files created to perform tests on the pendulumn kit. InvertedPendulum_Rok file has a modified GAM that is used for state transition between State 2 and 3. 
+## Instalation and Setup
 
-Immediate steps to take: 
+If you want to install MARTe2 on your own machine create a MARTe workspace folder and clone the following repository into a directory called MARTe2-dev:
 
-+ Replace Jawads STM Interface code with Rok's
-+ Modify the config files to accomodate the STM interface change.
-+ Fix the csv error messaging to initiate state 3 - stabilization.
-+ Figure out a way to refreash fileReader to go back to the first accelaration value after EOF is reached.
-+ A seperate state 2 mode on the stm side is not needed as the pendulumn will be only controlled using accelaration. 
-+ Implement State 3 controls - LQR controller. 
+```
+https://github.com/aneto0/MARTe2
+```
+
+Then build the tools from inside the directory by running:
+
+```
+$ cd MARTe2
+$ make -f Makefile.x86-linux
+$ export MARTe2_DIR=$(pwd)
+$ LD_LIBRARY_PATH=MARTe2_DIR/Build/x86-linux/Core
+```
+
+Then, clone this standard library of components and install them using the instructions at the bottom of the README:
+
+https://github.com/aneto0/MARTe2-components 
+
+Then, from inside that directory, run:
+
+```
+$ git clone https://github.com/aneto0/MARTe2-components.git
+$ cd MARTe2-components
+$ make -f Makefile.x86-linux
+$ export MARTe2_Components_DIR=$(pwd)
+```
+
+Before running the MARTe application be sure to export the relevant paths:
+
+
+
+Once the environment is setup. The next step is to Install the Inverted Pendulum programs. 
+
+Clone and build the files from the repo from inside the MARTe workspace by running the commands:
+
+```
+https://github.com/RoeBuckRoe/IP_4_PACE
+```
+
+Then, from inside that directory, run:
+
+```
+make -f Makefile.linux     #or whichever makefile is relevant!
+```
+
+Once the environment is fully setup, Movce on to the Run instructions.
+
+## Run
+
+Upload the corresponding STM32 code to the Edukit.
+
+Connect the STM32 to a computer with the USB cable.
+
+Set the correct device file (Port configuration of the MotorSTM32 data source in Configurations/Pendulum.cfg).
+
+Navigate to Startup/ directory within the project and execute the following command:
+
+sudo -E ./Main.sh -l RealTimeLoader -f ../Configurations/Pendulum.cfg -m StateMachine::START
