@@ -30,7 +30,7 @@ $ make -f Makefile.x86-linux
 $ export MARTe2_Components_DIR=$(pwd)
 ```
 
-> Before running the MARTe application be sure to export the relevant paths.
+> Before running the MARTe application be sure relevant paths are exported.
 
 Once the environment is setup. The next step is to Install the Inverted Pendulum programs. 
 
