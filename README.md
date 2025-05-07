@@ -37,13 +37,9 @@ Once the environment is setup. The next step is to Install the Inverted Pendulum
 Clone and build the files from the repo from inside the MARTe workspace by running the commands:
 
 ```
-https://github.com/RoeBuckRoe/IP_4_PACE
-```
-
-Then, from inside that directory, run:
-
-```
-make -f Makefile.linux     #or whichever makefile is relevant!
+$ git clone https://github.com/RoeBuckRoe/IP_4_PACE.git
+$ cd IP_4_PACE
+$ make -f Makefile.x86-linux
 ```
 
 Once the environment is fully setup, Movce on to the Run instructions.
