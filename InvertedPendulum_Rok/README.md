@@ -1,2 +1,0 @@
-Set MARTe2 environemntal variables, compile the code and run the following command from `Startup/` directory:
-`sudo -E ./Main.sh -l RealTimeLoader -f ../Configurations/Pendulum.cfg -m StateMachine::START`
