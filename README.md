@@ -50,7 +50,11 @@ Once the environment is fully setup, Movce on to the Run instructions.
 
 ## Run
 
-Upload the corresponding STM32 code to the Edukit.
+Upload the corresponding STM32 code to the Edukit from the repo:
+
+```
+https://github.com/RokHari/InvertedPendulum-STM32
+```
 
 Connect the STM32 to a computer with the USB cable.
 
