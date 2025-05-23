@@ -1,4 +1,4 @@
-OBJSX=BalanceLQRGAM.x
+OBJSX=BGAM.x
 
 PACKAGE=Components/GAMs
 
@@ -26,8 +26,8 @@ INCLUDES += -I$(MARTe2_DIR)/Source/Core/FileSystem/L3Streams
 INCLUDES += -I$(ROOT_DIR)/Source/Components/DataSources/MotorSTM32
 
 all: $(OBJS) $(SUBPROJ) \
-	$(BUILD_DIR)/BalanceLQRGAM$(LIBEXT)\
-    $(BUILD_DIR)/BalanceLQRGAM$(DLLEXT)\
+	$(BUILD_DIR)/BGAM$(LIBEXT)\
+    $(BUILD_DIR)/BGAM$(DLLEXT)\
     
 
 include depends.$(TARGET)

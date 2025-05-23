@@ -1,11 +1,10 @@
-#include "BalanceLQRGAM.h"
+#include "BGAM.h"
 #include "MotorSTM32Constants.h"
 
 #include "AdvancedErrorManagement.h"
 
 #include <algorithm>
-//TODO remove debugging
-#include <iostream>
+
 namespace InvertedPendulum {
 
 namespace {
@@ -49,11 +48,11 @@ MARTe::int32 normalizeEncoderPos(MARTe::uint32 position,
 
 /**
  * @return True if `x` and `y` have opposite signs. Else false.
-
+ */
 bool oppositeSigns(MARTe::int32 x, MARTe::int32 y)
 {
     return ((x ^ y) >> 31) != 0;
-} */
+}
 
 /**
  * @param position Pendulum position in encoder steps.
@@ -115,7 +114,7 @@ MARTe::float32 calculateSpeed(MARTe::int32 position,
 
 } // namespace
 
-BalanceLQRGAM::BalanceLQRGAM() : GAM(),
+BGAM::BGAM() : GAM(),
                            inputMotorState(NULL_PTR(MARTe::uint8*)),
                            inputEncoderPosition(NULL_PTR(MARTe::uint32*)),
                            inputMotorPosition(NULL_PTR(MARTe::int32*)),
@@ -124,7 +123,6 @@ BalanceLQRGAM::BalanceLQRGAM() : GAM(),
                            inputPrevMotorPosition(NULL_PTR(MARTe::int32*)),
                            inputPrevAbsoluteTime(NULL_PTR(MARTe::uint64*)),
                            inputEncoderPositionBottom(NULL_PTR(MARTe::uint32*)),
-                           inputEnableBalance(NULL_PTR(MARTe::uint8*)),
                            outputCommand(NULL_PTR(MARTe::uint8*)),
                            outputCommandParam(NULL_PTR(MARTe::int32*)),
                            outputRtAcc(NULL_PTR(MARTe::float32*)),
@@ -141,10 +139,10 @@ BalanceLQRGAM::BalanceLQRGAM() : GAM(),
                            swingUpKick(0) {
 }
 
-BalanceLQRGAM::~BalanceLQRGAM() {
+BGAM::~BGAM() {
 }
 
-bool BalanceLQRGAM::Initialise(MARTe::StructuredDataI& data) {
+bool BGAM::Initialise(MARTe::StructuredDataI& data) {
     bool ok = GAM::Initialise(data);
 
     if (ok) {
@@ -178,11 +176,11 @@ bool BalanceLQRGAM::Initialise(MARTe::StructuredDataI& data) {
     return ok;
 }
 
-bool BalanceLQRGAM::Setup() {
+bool BGAM::Setup() {
     // Validate input signals
-    bool ok = GetNumberOfInputSignals() == 9;
+    bool ok = GetNumberOfInputSignals() == 8;
     if (!ok) {
-        REPORT_ERROR(MARTe::ErrorManagement::ParametersError, "Number of input signals must be 9.");
+        REPORT_ERROR(MARTe::ErrorManagement::ParametersError, "Number of input signals must be 8.");
     }
     if (ok) {
         ok = GetSignalType(MARTe::InputSignals, 0u) == MARTe::UnsignedInteger8Bit;
@@ -264,16 +262,6 @@ bool BalanceLQRGAM::Setup() {
                     "uint32");
         }
     }
-    if (ok) {
-        ok = GetSignalType(MARTe::InputSignals, 8u) == MARTe::UnsignedInteger8Bit;
-        if (ok) {
-            inputEnableBalance = static_cast<MARTe::uint8*>(GetInputSignalMemory(8u));
-        }
-        else {
-            REPORT_ERROR(MARTe::ErrorManagement::InitialisationError, "Ninth input signal shall be of type "
-                    "uint8");
-        }
-    }
     // Validate output signals
     if (ok) {
         bool ok = GetNumberOfOutputSignals() == 5;
@@ -334,7 +322,7 @@ bool BalanceLQRGAM::Setup() {
     return ok;
 }
 
-bool BalanceLQRGAM::Execute() {
+bool BGAM::Execute() {
     const MARTe::float32 microsecondsToSeconds = 1e-6f;
     MARTe::float32 rtPeriod = (*inputAbsoluteTime - *inputPrevAbsoluteTime) *
             microsecondsToSeconds;
@@ -343,27 +331,89 @@ bool BalanceLQRGAM::Execute() {
     *outputCommandParam = 0u;
     *outputRtAcc = 0.0f;
     *outputRtPeriod = rtPeriod;
-    *outputSwitchState = 5u;
+    *outputSwitchState = 0u;
 
     if (exit) {
         return true;
     }
-    else {
+
+    if (!balanceEnabled) {
+        SwingUp();
+    }
+    // Else if not used here FOR A GOOD REASON!!! (SwingUp function changes its value.)
+    if (balanceEnabled) {
         Balance(rtPeriod);
     }
 
     return true;
 }
 
-bool BalanceLQRGAM::PrepareNextState(const MARTe::char8* const currentStateName,
+bool BGAM::PrepareNextState(const MARTe::char8* const currentStateName,
                                   const MARTe::char8* const nextStateName) {
     firstMove = true;
     positiveDirection = true;
+    balanceEnabled = true;
     exit = false;
+    swingUpKick = 300;
     return true;
 }
 
-void BalanceLQRGAM::Balance(MARTe::float32 rtPeriod) {
+void BGAM::SwingUp() {
+    MARTe::int32 normPosition = normalizeEncoderPos(*inputEncoderPosition,
+            *inputEncoderPositionBottom);
+    MARTe::int32 normPrevPosition = normalizeEncoderPos(*inputPrevEncoderPosition,
+            *inputEncoderPositionBottom);
+
+    if (firstMove) {
+        // Do not move the motor if it is already moving.
+        if (*inputMotorState != MotorState::Inactive) {
+            return;
+        }
+        // Always give a kick to the motor at the start, to get the pendulum moving.
+        firstMove = false;
+        *outputCommand = MotorCommands::GoTo;
+        *outputCommandParam = *inputMotorPosition - 250;
+    }
+    else {
+        // If we are close to the highest position (within 15 steps, enable balancing state.)
+        if (std::abs(normPosition) > encoderStepsInHalfCircle - 15) {
+            balanceEnabled = true;
+            return;
+        }
+
+       /* // When we are close to the top position, reduce the kick strength.
+        if (std::abs(normPosition) > encoderStepsInHalfCircle - 220) {
+            swingUpKick = 75;
+        }
+        */
+
+        // If the pendulum crossed the bottom position, add a kick.
+        if (oppositeSigns(normPrevPosition, normPosition)) {
+            // Make sure motor does not go too far from the center position.
+            if (std::abs(*inputMotorPosition) < motorStepsInThirdOfCircle) {
+                // Only move the motor when it's not moving.
+                if (*inputMotorState == MotorState::Inactive) {
+                    *outputCommand = MotorCommands::GoTo;
+                    if (positiveDirection) {
+                        *outputCommandParam = *inputMotorPosition + swingUpKick;
+                    }
+                    else {
+                        *outputCommandParam = *inputMotorPosition - swingUpKick;
+                    }
+                }
+            }
+            positiveDirection = !positiveDirection;
+        }
+    }
+}
+
+void BGAM::Balance(MARTe::float32 rtPeriod) {
+    // Make sure motor does not go too far from the center position.
+    //if (std::abs(*inputMotorPosition) > motorStepsInThirdOfCircle) {
+      //  *outputSwitchState = 3u;
+       // exit = true;
+        //return;
+    //}
 
     MARTe::int32 normPosition = normalizeEncoderPos(*inputEncoderPosition,
             *inputEncoderPositionBottom);
@@ -380,17 +430,9 @@ void BalanceLQRGAM::Balance(MARTe::float32 rtPeriod) {
     MARTe::float32 encoderSpeedRad = encoderStepsToRadians(encoderSpeed);
 
     // If encoder is too far way from the highest position stop balancing.
-    if (std::abs(*inputMotorPosition) > motorStepsInThirdOfCircle) {
+    if (std::abs(encoderPositionRad) > 0.3f) {
         *outputSwitchState = 3u;
         exit = true;
-        std::cout << "motor position drifted too far " << std::endl;
-        return;
-    }
-    // Make sure motor does not go too far from the center position.
-    if (std::abs(encoderPositionRad) > 0.15f) {
-        *outputSwitchState = 3u;
-        exit = true;
-        std::cout << "encoder out of position " << std::endl;
         return;
     }
 
@@ -399,16 +441,10 @@ void BalanceLQRGAM::Balance(MARTe::float32 rtPeriod) {
             k3 * motorSpeedRad +
             k4 * encoderSpeedRad;
 
-    std::cout << "motorPositionRad " << motorPositionRad << std::endl;
-    std::cout << "encoderPositionRad " << encoderPositionRad << std::endl;
-    std::cout << "motorSpeedRad " << motorSpeedRad << std::endl;
-    std::cout << "encoderSpeedRad " << encoderSpeedRad << std::endl;
-    std::cout << "RT acc " << radiansToMotorSteps(acceleration) << std::endl;
-
     *outputRtAcc = radiansToMotorSteps(acceleration);
     *outputCommand = MotorCommands::RT_MoveMotor;
 }
 
-CLASS_REGISTER(BalanceLQRGAM, "1.0");
+CLASS_REGISTER(BGAM, "1.0");
 
 } // namespace InvertedPendulum
