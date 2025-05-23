@@ -354,7 +354,7 @@ bool BalanceGAM::PrepareNextState(const MARTe::char8* const currentStateName,
     positiveDirection = true;
     balanceEnabled = false;
     exit = false;
-    swingUpKick = 300;
+    swingUpKick = 75;
     return true;
 }
 
@@ -376,10 +376,10 @@ void BalanceGAM::SwingUp() {
     }
     else {
         // If we are close to the highest position (within 15 steps, enable balancing state.)
-        if (std::abs(normPosition) > encoderStepsInHalfCircle - 15) {
-            balanceEnabled = true;
-            return;
-        }
+        //if (std::abs(normPosition) > encoderStepsInHalfCircle - 15) {
+        //    balanceEnabled = true;
+        //    return;
+        //}
 
        /* // When we are close to the top position, reduce the kick strength.
         if (std::abs(normPosition) > encoderStepsInHalfCircle - 220) {
