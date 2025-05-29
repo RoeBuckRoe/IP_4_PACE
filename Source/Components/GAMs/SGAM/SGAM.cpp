@@ -1,4 +1,4 @@
-#include "SwingUpGAM.h"
+#include "SGAM.h"
 #include "MotorSTM32Constants.h"
 
 #include "AdvancedErrorManagement.h"
@@ -54,9 +54,67 @@ bool oppositeSigns(MARTe::int32 x, MARTe::int32 y)
     return ((x ^ y) >> 31) != 0;
 }
 
+/**
+ * @param position Pendulum position in encoder steps.
+ * @return Pendulum angle in radians.
+ */
+MARTe::float32 encoderStepsToRadians(MARTe::int32 position) {
+    MARTe::float32 angle = twoPi * position / encoderStepsInCircle;
+    return angle;
+}
+
+/**
+ * @param position Pendulum position in encoder steps (where 0 steps is bottom position).
+ * @return Pendulum angle in radians (where 0 radians is the top position).
+ */
+MARTe::float32 normalizedEncoderStepsToRadians(MARTe::int32 position) {
+    // Normalized position has bottom at 0 steps. Add half a circle of steps to
+    // move the 0 steps to the top position.
+    position += encoderStepsInHalfCircle;
+
+    // Keep the position between -halfCircle and +halfCircle.
+    position += encoderStepsInHalfCircle;
+    position %= encoderStepsInCircle;
+    position -= encoderStepsInHalfCircle;
+
+    MARTe::float32 angle = twoPi * position / encoderStepsInCircle;
+    return angle;
+}
+
+/**
+ * @param position Motor position in motor steps
+ * @return Motor angle in radians.
+ */
+MARTe::float32 motorStepsToRadians(MARTe::int32 position) {
+    MARTe::float32 angle = twoPi * position / motorStepsInCircle;
+    return angle;
+}
+
+/**
+ * @param angle Motor angle in radians.
+ * @return Motor position in motor steps.
+ */
+MARTe::float32 radiansToMotorSteps(MARTe::float32 angle) {
+    MARTe::float32 position = angle * motorStepsInCircle / twoPi;
+    return position;
+}
+
+/**
+ * @param position Current measured position.
+ * @param prevPositions Previous measured position.
+ * @param period Time between the two measurements in seconds.
+ * @return Interpolated speed.
+ */
+MARTe::float32 calculateSpeed(MARTe::int32 position,
+                              MARTe::int32 prevPosition,
+                              MARTe::float32 period) {
+    MARTe::float32 speed = (position - prevPosition) / period;
+    return speed;
+}
+
 } // namespace
 
-SwingUpGAM::SwingUpGAM() : GAM(),
+SGAM::SGAM() : GAM(),
                            inputMotorState(NULL_PTR(MARTe::uint8*)),
                            inputEncoderPosition(NULL_PTR(MARTe::uint32*)),
                            inputMotorPosition(NULL_PTR(MARTe::int32*)),
@@ -67,32 +125,37 @@ SwingUpGAM::SwingUpGAM() : GAM(),
                            inputEncoderPositionBottom(NULL_PTR(MARTe::uint32*)),
                            outputCommand(NULL_PTR(MARTe::uint8*)),
                            outputCommandParam(NULL_PTR(MARTe::int32*)),
-                           //outputRtAcc(NULL_PTR(MARTe::float32*)),
-                           //outputRtPeriod(NULL_PTR(MARTe::float32*)),
+                           outputRtAcc(NULL_PTR(MARTe::float32*)),
+                           outputRtPeriod(NULL_PTR(MARTe::float32*)),
                            outputSwitchState(NULL_PTR(MARTe::uint8*)),
+                           k1(0.0f),
+                           k2(0.0f),
+                           k3(0.0f),
+                           k4(0.0f),
                            firstMove(true),
                            positiveDirection(true),
+                           balanceEnabled(false),
                            exit(false),
                            swingUpKick(0) {
 }
 
-SwingUpGAM::~SwingUpGAM() {
+SGAM::~SGAM() {
 }
 
-bool SwingUpGAM::Initialise(MARTe::StructuredDataI& data) {
+bool SGAM::Initialise(MARTe::StructuredDataI& data) {
     bool ok = GAM::Initialise(data);
 
     if (ok) {
         ok = data.Read("Kick", swingUpKick);
         if (!ok) {
-            REPORT_ERROR(MARTe::ErrorManagement::ParametersError, "No k1 has been "
+            REPORT_ERROR(MARTe::ErrorManagement::ParametersError, "No swingUpKick has been "
                     "specified.");
         }
     }
     return ok;
 }
 
-bool SwingUpGAM::Setup() {
+bool SGAM::Setup() {
     // Validate input signals
     bool ok = GetNumberOfInputSignals() == 8;
     if (!ok) {
@@ -206,7 +269,27 @@ bool SwingUpGAM::Setup() {
         }
     }
     if (ok) {
-        ok = GetSignalType(MARTe::OutputSignals, 2u) == MARTe::UnsignedInteger8Bit;
+        ok = GetSignalType(MARTe::OutputSignals, 2u) == MARTe::Float32Bit;
+        if (ok) {
+            outputRtAcc = static_cast<MARTe::float32*>(GetOutputSignalMemory(2u));
+        }
+        else {
+            REPORT_ERROR(MARTe::ErrorManagement::InitialisationError, "Third output signal shall be of type "
+                    "float32");
+        }
+    }
+    if (ok) {
+        ok = GetSignalType(MARTe::OutputSignals, 3u) == MARTe::Float32Bit;
+        if (ok) {
+            outputRtPeriod = static_cast<MARTe::float32*>(GetOutputSignalMemory(3u));
+        }
+        else {
+            REPORT_ERROR(MARTe::ErrorManagement::InitialisationError, "Fourth output signal shall be of type "
+                    "float32");
+        }
+    }
+    if (ok) {
+        ok = GetSignalType(MARTe::OutputSignals, 4u) == MARTe::UnsignedInteger8Bit;
         if (ok) {
             outputSwitchState = static_cast<MARTe::uint8*>(GetOutputSignalMemory(4u));
         }
@@ -218,35 +301,43 @@ bool SwingUpGAM::Setup() {
     return ok;
 }
 
-bool SwingUpGAM::Execute() {
+bool SGAM::Execute() {
     const MARTe::float32 microsecondsToSeconds = 1e-6f;
     MARTe::float32 rtPeriod = (*inputAbsoluteTime - *inputPrevAbsoluteTime) *
             microsecondsToSeconds;
 
     *outputCommand = MotorCommands::NoOp;
     *outputCommandParam = 0u;
-    // *outputRtAcc = 0.0f;
-    // *outputRtPeriod = rtPeriod;
+    *outputRtAcc = 0.0f;
+    *outputRtPeriod = rtPeriod;
     *outputSwitchState = 0u;
 
     if (exit) {
         return true;
     }
 
-    SwingUp();
+    if (!balanceEnabled) {
+        SwingUp();
+    }
+    // Else if not used here FOR A GOOD REASON!!! (SwingUp function changes its value.)
+    if (balanceEnabled) {
+        Balance(rtPeriod);
+    }
 
     return true;
 }
 
-bool SwingUpGAM::PrepareNextState(const MARTe::char8* const currentStateName,
+bool SGAM::PrepareNextState(const MARTe::char8* const currentStateName,
                                   const MARTe::char8* const nextStateName) {
     firstMove = true;
     positiveDirection = true;
+    balanceEnabled = false;
     exit = false;
+    swingUpKick = 300;
     return true;
 }
 
-void SwingUpGAM::SwingUp() {
+void SGAM::SwingUp() {
     MARTe::int32 normPosition = normalizeEncoderPos(*inputEncoderPosition,
             *inputEncoderPositionBottom);
     MARTe::int32 normPrevPosition = normalizeEncoderPos(*inputPrevEncoderPosition,
@@ -290,6 +381,44 @@ void SwingUpGAM::SwingUp() {
     }
 }
 
-CLASS_REGISTER(SwingUpGAM, "1.0");
+void SGAM::Balance(MARTe::float32 rtPeriod) {
+    // Make sure motor does not go too far from the center position.
+    //if (std::abs(*inputMotorPosition) > motorStepsInThirdOfCircle) {
+       // *outputSwitchState = 3u;
+       // exit = true;
+       // return;
+    // }
+
+    MARTe::int32 normPosition = normalizeEncoderPos(*inputEncoderPosition,
+            *inputEncoderPositionBottom);
+    MARTe::int32 normPrevPosition = normalizeEncoderPos(*inputPrevEncoderPosition,
+            *inputEncoderPositionBottom);
+
+    MARTe::float32 motorSpeed = calculateSpeed(*inputMotorPosition, *inputPrevMotorPosition,
+            rtPeriod);
+    MARTe::float32 encoderSpeed = calculateSpeed(normPosition, normPrevPosition, rtPeriod);
+
+    MARTe::float32 motorPositionRad = motorStepsToRadians(*inputMotorPosition);
+    MARTe::float32 encoderPositionRad = normalizedEncoderStepsToRadians(normPosition);
+    MARTe::float32 motorSpeedRad = motorStepsToRadians(motorSpeed);
+    MARTe::float32 encoderSpeedRad = encoderStepsToRadians(encoderSpeed);
+
+    // If encoder is too far way from the highest position stop balancing.
+    if (std::abs(encoderPositionRad) > 0.2f) {
+        *outputSwitchState = 3u;
+        exit = true;
+        return;
+    }
+
+    MARTe::float32 acceleration = k1 * motorPositionRad +
+            k2 * encoderPositionRad +
+            k3 * motorSpeedRad +
+            k4 * encoderSpeedRad;
+
+    *outputRtAcc = radiansToMotorSteps(acceleration);
+    *outputCommand = MotorCommands::RT_MoveMotor;
+}
+
+CLASS_REGISTER(SGAM, "1.0");
 
 } // namespace InvertedPendulum

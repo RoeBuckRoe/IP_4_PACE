@@ -1,5 +1,5 @@
-#ifndef SOURCE_COMPONENTS_GAMS_SwingUpGAM_SwingUpGAM_H_
-#define SOURCE_COMPONENTS_GAMS_SwingUpGAM_SwingUpGAM_H_
+#ifndef SOURCE_COMPONENTS_GAMS_SGAM_SGAM_H_
+#define SOURCE_COMPONENTS_GAMS_SGAM_SGAM_H_
 
 #include "GAM.h"
 
@@ -17,8 +17,11 @@ namespace InvertedPendulum {
  * The configuration syntax is (names are only given as an example):
  * <pre>
  * +SwingUpAndBalance = {
- *     Class = SwingUpGAM
- *     Kick = 65.0 // Compulsory. Pendulum kick intensity.
+ *     Class = SGAM
+ *     K1 = 65.0 // Compulsory. Motor position weight.
+ *     K2 = -1500.0 // Compulsory. Encoder position weight.
+ *     K3 = -0.12 // Compulsory. Motor speed weight.
+ *     K4 = -20.0 // Compulsory. Encoder speed weight.
  *     InputSignals = { // Order of signals is important.
  *         MotorState = { // Compulsory. Current motor state (see MotorState enum for valid values).
  *             Type = uint8 // Type must be uint8.
@@ -52,6 +55,11 @@ namespace InvertedPendulum {
  *         CommandParameter = { // Compulsory. Requested absolute position of the motor when Command is MotorCommands::GoTo.
  *             Type = int32 // Type must be int32.
  *         }
+ *         RtAcc = { // Compulsory. Requested motor acceleration when Command is MotorCommands::RT_MoveMotor.
+ *             Type = float32 // Type must be float32.
+ *         }
+ *         RtPeriod = { // Compulsory. Real-time period when Command is MotorCommands::RT_MoveMotor.
+ *             Type = float32 // Type must be float32.
  *         }
  *         CommandState = { // Compulsory. Set to 3 when the pendulum can no longer be balanced. Else set to 0.
  *             Type = uint8 // Type must be uint8.
@@ -60,13 +68,13 @@ namespace InvertedPendulum {
  * }
  * </pre>
  */
-class SwingUpGAM : public MARTe::GAM, public MARTe::StatefulI {
+class SGAM : public MARTe::GAM, public MARTe::StatefulI {
 public:
     CLASS_REGISTER_DECLARATION()
 
-    SwingUpGAM();
+    SGAM();
 
-    virtual ~SwingUpGAM();
+    virtual ~SGAM();
 
     virtual bool Initialise(MARTe::StructuredDataI& data);
 
@@ -92,22 +100,23 @@ private:
     MARTe::uint32* inputEncoderPositionBottom;
     MARTe::uint8* outputCommand;
     MARTe::int32* outputCommandParam;
-    // MARTe::float32* outputRtAcc;
-    // MARTe::float32* outputRtPeriod;
+    MARTe::float32* outputRtAcc;
+    MARTe::float32* outputRtPeriod;
     MARTe::uint8* outputSwitchState;
 
-    // MARTe::float32 k1;
-    // MARTe::float32 k2;
-    // MARTe::float32 k3;
-    // MARTe::float32 k4;
+    MARTe::float32 k1;
+    MARTe::float32 k2;
+    MARTe::float32 k3;
+    MARTe::float32 k4;
 
     bool firstMove;
     bool positiveDirection;
-    // bool balanceEnabled;
+    bool balanceEnabled;
     bool exit;
-    MARTe::int32 swingUpKick;
+    
+    MARTe::float32 swingUpKick;
 };
 
 } // namespace InvertedPendulum
 
-#endif // SOURCE_COMPONENTS_GAMS_SwingUpGAM_SwingUpGAM_H_
+#endif // SOURCE_COMPONENTS_GAMS_SGAM_SGAM_H_
